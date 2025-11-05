@@ -48,6 +48,7 @@ body {
 header h1 { margin: 0 0 10px; font-weight: 700; letter-spacing: 0.5px; }
 .toolbar, .genbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
 label { color: var(--muted); }
+select { background: var(--panel); color: var(--text); border: 1px solid #2f3b50; border-radius: 6px; padding: 6px; }
 
 button {
   background: linear-gradient(180deg, #2a3649, #1d2737);
@@ -60,8 +61,11 @@ button {
 }
 button:hover { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(110,168,254,0.2) inset; }
 button:active { transform: translateY(1px); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 #leftBtn.active, #rightBtn.active { box-shadow: 0 0 12px var(--blue), inset 0 0 0 2px var(--blue-edge); background: linear-gradient(180deg, #3a4a5e, #2d3d4e); }
 #rightBtn.active { box-shadow: 0 0 12px var(--red), inset 0 0 0 2px var(--red-edge); background: linear-gradient(180deg, #5a3d3e, #4d2d2e); }
+#exploreBtn { background: linear-gradient(180deg, #4a5e3a, #3d4d2e); }
+#exploreBtn:hover { box-shadow: 0 0 12px var(--green), inset 0 0 0 2px var(--green-edge); }
 
 input[type="number"], input[type="range"] {
   width: 80px; background: var(--panel); color: var(--text);

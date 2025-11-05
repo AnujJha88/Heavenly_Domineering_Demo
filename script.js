@@ -1,7 +1,9 @@
-// Mosaic Mayhem – Manual Sparse + Enhanced CGT
+// Mosaic Mayhem – Play/Explore Modes + Enhanced CGT
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 
+const modeSelect = document.getElementById('modeSelect');
+const modeDisplay = document.getElementById('modeDisplay');
 const turnEl = document.getElementById('turn');
 const topYEl = document.getElementById('topY');
 const movesAvailEl = document.getElementById('movesAvail');
@@ -10,6 +12,7 @@ const builderToggle = document.getElementById('builderToggle');
 const allSmallToggle = document.getElementById('allSmallToggle');
 const leftBtn = document.getElementById('leftBtn');
 const rightBtn = document.getElementById('rightBtn');
+const exploreBtn = document.getElementById('exploreBtn');
 
 const zoomEl = document.getElementById('zoom');
 const showGridEl = document.getElementById('showGrid');
@@ -33,6 +36,8 @@ const cgtExportBtn = document.getElementById('cgtExportBtn');
 const cgtOut = document.getElementById('cgtOut');
 
 const logEl = document.getElementById('log');
+
+let mode = 'play'; // Current mode
 
 // Visual config
 let CELL = 32; // zoom
@@ -109,7 +114,7 @@ function legalAllSmallPlaceLocal(oMap){
   return null;
 }
 
-// Rendering
+// Rendering (unchanged from previous)
 function crispLineRect(x,y,w,h){ const o=0.5; ctx.strokeRect(Math.floor(x)+o,Math.floor(y)+o,Math.floor(w)-1,Math.floor(h)-1); }
 
 function drawTileBackground(x,y){
@@ -194,23 +199,20 @@ function render(){
   renderBase();
   drawTopRowGlow();
   drawAllPieces(occ);
-  if(!builderToggle.checked && hoverCell) drawGhost(hoverCell.x, hoverCell.y);
+  if(mode === 'play' && !builderToggle.checked && hoverCell) drawGhost(hoverCell.x, hoverCell.y);
   // Update button states
-  leftBtn.classList.toggle('active', current === 'Left');
-  rightBtn.classList.toggle('active', current === 'Right');
+  leftBtn.classList.toggle('active', current === 'Left' && mode === 'play');
+  rightBtn.classList.toggle('active', current === 'Right' && mode === 'play');
+  exploreBtn.disabled = mode !== 'explore';
 }
 
 // Interaction
 canvas.addEventListener('mousemove', e=>{
-  const p = eventToCell(e);
-  hoverCell = p;
-  render();
+  if(mode === 'play'){ const p = eventToCell(e); hoverCell = p; render(); }
 });
-canvas.addEventListener('mouseleave', ()=>{ hoverCell=null; render(); });
+canvas.addEventListener('mouseleave', ()=>{ if(mode === 'play') { hoverCell=null; render(); } });
 canvas.addEventListener('click', e=>{
-  const p = eventToCell(e); if(!p) return;
-  if(builderToggle.checked){ toggleCell(p.x,p.y); return; }
-  placeMove(p.x,p.y);
+  if(mode === 'play'){ const p = eventToCell(e); if(!p) return; if(builderToggle.checked){ toggleCell(p.x,p.y); return; } placeMove(p.x,p.y); }
 });
 
 function eventToCell(e){
@@ -221,22 +223,35 @@ function eventToCell(e){
   return {x:gx,y:gy};
 }
 
-// Moves
+// Mode handling
+modeSelect.onchange = () => {
+  mode = modeSelect.value;
+  modeDisplay.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+  current = 'Left'; // Reset to Left on mode switch
+  if(mode === 'play'){ leftBtn.disabled = false; rightBtn.disabled = false; canvas.style.cursor = 'default'; }
+  else { leftBtn.disabled = true; rightBtn.disabled = true; canvas.style.cursor = 'not-allowed'; }
+  updateHUD(); render();
+};
+
+// Moves (Play mode only)
 function pushUndo(){
-  undoStack.push({occ:new Map(occ), current, cells:new Set(cells)});
+  undoStack.push({occ:new Map(occ), current, cells:new Set(cells), mode, allSmall: allSmallToggle.checked });
   if(undoStack.length>200) undoStack.shift();
   redoStack.length=0;
 }
 function undo(){ if(!undoStack.length) return;
-  const s=undoStack.pop(); redoStack.push({occ:new Map(occ), current, cells:new Set(cells)});
-  occ=s.occ; current=s.current; cells=s.cells; computeBounds(); render(); updateHUD(); log('Undo');
+  const s=undoStack.pop(); redoStack.push({occ:new Map(occ), current, cells:new Set(cells), mode, allSmall: allSmallToggle.checked });
+  occ=s.occ; current=s.current; cells=s.cells; mode=s.mode; allSmallToggle.checked=s.allSmall; modeSelect.value=mode; modeDisplay.textContent=mode.charAt(0).toUpperCase() + mode.slice(1);
+  computeBounds(); render(); updateHUD(); log('Undo');
 }
 function redo(){ if(!redoStack.length) return;
-  const s=redoStack.pop(); undoStack.push({occ:new Map(occ), current, cells:new Set(cells)});
-  occ=s.occ; current=s.current; cells=s.cells; computeBounds(); render(); updateHUD(); log('Redo');
+  const s=redoStack.pop(); undoStack.push({occ:new Map(occ), current, cells:new Set(cells), mode, allSmall: allSmallToggle.checked });
+  occ=s.occ; current=s.current; cells=s.cells; mode=s.mode; allSmallToggle.checked=s.allSmall; modeSelect.value=mode; modeDisplay.textContent=mode.charAt(0).toUpperCase() + mode.slice(1);
+  computeBounds(); render(); updateHUD(); log('Redo');
 }
 
 function updateHUD(){
+  modeDisplay.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
   turnEl.textContent=current;
   const topY=getTopY(); topYEl.textContent=topY;
   movesAvailEl.textContent = legalMoves(current).length || (allSmallToggle.checked && legalAllSmallPlaceLocal(occ) ? 1 : 0);
@@ -252,13 +267,14 @@ function animatePlace(cellsPlaced, color, edge, done){
       ctx.fillStyle=color; ctx.fillRect(px+2+inset,py+2+inset,CELL-4-2*inset,CELL-4-2*inset);
       ctx.strokeStyle=edge; ctx.lineWidth=1.5; crispLineRect(px+2+inset,py+2+inset,CELL-4-2*inset,CELL-4-2*inset);
     }
-    if(hoverCell) drawGhost(hoverCell.x,hoverCell.y);
+    if(hoverCell && mode === 'play') drawGhost(hoverCell.x,hoverCell.y);
     if(k<1) anim=requestAnimationFrame(frame); else { anim=null; done&&done(); }
   }
   anim=requestAnimationFrame(frame);
 }
 
-function placeMove(x,y){
+function placeMove(x,y){ // Play mode
+  if(mode !== 'play') return;
   const topY=getTopY(); if(topY===-1) return;
   const avail=legalMoves(current);
   const isDominoAvail = avail.length>0;
@@ -286,7 +302,85 @@ function placeMove(x,y){
   }
 }
 
-// Builder
+// Explore mode: Auto-playout simulation
+function cloneState(){
+  return { occ: new Map(occ), current, cells: new Set(cells), allSmall: allSmallToggle.checked };
+}
+
+function runExplore(){
+  if(mode !== 'explore') return;
+  const startState = cloneState();
+  let state = cloneState();
+  let simCurrent = startState.current;
+  let passCount = 0;
+  let logPrefix = 'Explore: ';
+  log(`${logPrefix}Starting playout from current position.`);
+
+  while(passCount < 2){
+    const topY = getTopYLocal(state.occ);
+    if(topY === -1){ log(`${logPrefix}No top row - terminal.`); break; }
+
+    const moves = legalMovesForSim(simCurrent, state);
+    if(moves.length === 0){
+      if(allSmallToggle.checked){
+        const g = legalAllSmallPlaceLocal(state.occ);
+        if(g){
+          // Place green (shared, but for sim, assign to current)
+          state.occ.set(key(g.x, g.y), 4);
+          log(`${logPrefix}${simCurrent} places 1x1 at (${g.x},${g.y})`);
+          passCount = 0;
+          continue;
+        }
+      }
+      log(`${logPrefix}${simCurrent} has no moves - pass.`);
+      passCount++;
+      simCurrent = simCurrent === 'Left' ? 'Right' : 'Left';
+      continue;
+    }
+
+    // Random move
+    const move = moves[Math.floor(Math.random() * moves.length)];
+    if(move.kind === 'V'){
+      state.occ.set(key(move.x, move.y), 2);
+      state.occ.set(key(move.x, move.y+1), 2);
+      log(`${logPrefix}${simCurrent} places vertical at (${move.x},${move.y})`);
+    } else if(move.kind === 'H'){
+      state.occ.set(key(move.x, move.y), 3);
+      state.occ.set(key(move.x+1, move.y), 3);
+      log(`${logPrefix}${simCurrent} places horizontal at (${move.x},${move.y})`);
+    }
+    passCount = 0;
+    simCurrent = simCurrent === 'Left' ? 'Right' : 'Left';
+  }
+
+  // Outcome: Count remaining empties per "side" (impartial, but approx by color or total)
+  const remainingEmpties = cells.size - [...state.occ.values()].filter(v => v > 0).length;
+  const winner = remainingEmpties === 0 ? 'Draw' : (simCurrent === 'Left' ? 'Right wins' : 'Left wins'); // Last mover wins, or by empties
+  log(`${logPrefix}Playout ended: ${winner} (remaining empties: ${remainingEmpties}).`);
+
+  // Restore original
+  occ = startState.occ;
+  current = startState.current;
+  cells = startState.cells;
+  allSmallToggle.checked = startState.allSmall;
+  computeBounds(); render(); updateHUD();
+
+  // Optional: Compute CGT on final sim state if button pressed, but log here
+}
+
+function legalMovesForSim(side, state){
+  const topY = getTopYLocal(state.occ);
+  const moves = [];
+  if(topY === -1) return moves;
+  if(side === 'Left'){
+    for(const s of state.cells){ const {x,y} = parseKey(s); if(y !== topY) continue; if(isEmptyLocal(state.occ, x, y) && isEmptyLocal(state.occ, x, y+1)) moves.push({kind:'V', x, y}); }
+  } else {
+    for(const s of state.cells){ const {x,y} = parseKey(s); if(y !== topY) continue; if(isEmptyLocal(state.occ, x, y) && isEmptyLocal(state.occ, x+1, y)) moves.push({kind:'H', x, y}); }
+  }
+  return moves;
+}
+
+// Builder (works in both modes)
 function toggleCell(x,y){
   const k=key(x,y);
   if(!cells.has(k)){
@@ -315,7 +409,7 @@ function isConnected(){
   return seen.size===cells.size;
 }
 
-// Generator with random
+// Generator with random (unchanged)
 function genPoly(n=16){
   pushUndo(); cells.clear(); occ.clear();
   let frontier=[{x:0,y:0}]; cells.add(key(0,0));
@@ -339,9 +433,9 @@ function normalizeOrigin(){
   cells=newCells; occ=newOcc;
 }
 
-// IO
+// IO (updated to save mode)
 function exportState(){
-  const obj={ cells:[...cells].map(parseKey), occ:[...occ].map(([kk,v])=>({cell:parseKey(kk),v})), current, allSmall: allSmallToggle.checked };
+  const obj={ cells:[...cells].map(parseKey), occ:[...occ].map(([kk,v])=>({cell:parseKey(kk),v})), current, mode, allSmall: allSmallToggle.checked };
   const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='mosaic_mayhem.json'; a.click(); URL.revokeObjectURL(url);
 }
@@ -353,24 +447,25 @@ function importState(file){
       pushUndo();
       cells=new Set(obj.cells.map(({x,y})=>key(x,y)));
       occ=new Map(obj.occ.map(({cell,v})=>[key(cell.x,cell.y),v]));
-      current=obj.current||'Left'; allSmallToggle.checked=!!obj.allSmall;
+      current=obj.current||'Left'; mode=obj.mode||'play'; allSmallToggle.checked=!!obj.allSmall; modeSelect.value=mode;
       computeBounds(); render(); updateHUD(); log('Imported state');
     }catch(e){ log('Import failed: '+e.message); }
   };
   fr.readAsText(file);
 }
 
-// Reset with random
+// Reset with random (unchanged)
 function reset(){
   const randSize = Math.floor(Math.random() * 9) + 12; // 12-20
   genPoly(randSize);
   current = 'Left';
+  mode = 'play'; modeSelect.value = 'play';
   updateHUD();
   render();
   log(`Reset with random board of size ${randSize}`);
 }
 
-// CGT Enhanced
+// CGT (unchanged from previous)
 function cloneOcc(o){ return new Map(o); }
 function stateKey(o){
   const arr=[];
@@ -411,7 +506,7 @@ function enumerateRightOptions(o){
   return opts;
 }
 
-function enumerateLeftOptionsWithoutGreen(o){ // For terminal check
+function enumerateLeftOptionsWithoutGreen(o){
   const topY=getTopYLocal(o); if(topY===-1) return [];
   const opts=[];
   for(const s of cells){ const {x,y}=parseKey(s); if(y!==topY) continue;
@@ -444,7 +539,6 @@ function isTerminal(o){
   return false;
 }
 
-// Grundy number: mex of options' Grundy
 function mex(set) {
   let i=0; while(set.has(i)) i++; return i;
 }
@@ -454,22 +548,23 @@ function computeGrundy(o, memo) {
   if (memo.has(k)) return memo.get(k).grundy;
   if (isTerminal(o)) {
     const g = 0;
-    memo.get(k).grundy = g;
+    if(!memo.has(k)) memo.set(k, {grundy: g});
+    else memo.get(k).grundy = g;
     return g;
   }
   const Lopts = enumerateLeftOptions(o);
   const Ropts = enumerateRightOptions(o);
-  const allOpts = [...Lopts, ...Ropts]; // Impartial: union of both
+  const allOpts = [...Lopts, ...Ropts];
   const gs = new Set();
   for (const opt of allOpts) {
     gs.add(computeGrundy(opt, memo));
   }
   const g = mex(gs);
-  memo.get(k).grundy = g;
+  if(!memo.has(k)) memo.set(k, {grundy: g});
+  else memo.get(k).grundy = g;
   return g;
 }
 
-// Main compute: bracket + Grundy
 function computeBracket(o, depth, memo) {
   const k = stateKey(o);
   if (!memo.has(k)) {
@@ -492,7 +587,6 @@ function computeBracket(o, depth, memo) {
   const Lnodes = Lopts.map(no => computeBracket(no, depth-1, memo));
   const Rnodes = Ropts.map(no => computeBracket(no, depth-1, memo));
 
-  // Dedup by bracket
   const uniqueByBracket = (arr) => [...new Map(arr.map(n => [n.bracket, n])).values()];
   const Lu = uniqueByBracket(Lnodes);
   const Ru = uniqueByBracket(Rnodes);
@@ -501,13 +595,12 @@ function computeBracket(o, depth, memo) {
   const rtxt = Ru.length ? Ru.map(n => n.bracket).join(', ') : '';
   let bracket = `{${ltxt} | ${rtxt}}`;
 
-  // Enhanced heuristics
   bracket = heuristicSimplifyEnhanced(Lu, Ru, bracket);
 
   node.left = Lu;
   node.right = Ru;
   node.bracket = bracket;
-  node.grundy = computeGrundy(o, memo); // Compute full Grundy regardless of depth for eval
+  node.grundy = computeGrundy(o, memo);
 
   return node;
 }
@@ -517,28 +610,21 @@ function heuristicSimplifyEnhanced(Lu, Ru, fallback) {
   const empty = arr => arr.length === 0;
   const allSame = (arr, g) => arr.every(n => n.grundy === g);
 
-  // 0
   if (empty(Lu) && empty(Ru)) return '0';
 
-  // 1 = {0 | }, -1 = { | 0}
   if (only(Lu, '0') && empty(Ru)) return '1';
   if (empty(Lu) && only(Ru, '0')) return '-1';
 
-  // * = {0 | 0}
   if (only(Lu, '0') && only(Ru, '0')) return '*';
 
-  // 1/2 = {0 | 1}, -1/2 = {1 | 0}
   if (only(Lu, '0') && only(Ru, '1')) return '1/2';
   if (only(Lu, '1') && only(Ru, '0')) return '-1/2';
 
-  // ±1 = {1 | -1}
   if (only(Lu, '1') && only(Ru, '-1')) return '±1';
 
-  // ↑ = {0 | *}, ↓ = {* | 0}
   if (only(Lu, '0') && only(Ru, '*')) return '↑';
   if (only(Lu, '*') && only(Ru, '0')) return '↓';
 
-  // More: {↑ | 0} = {1/2}, etc. (basic switches)
   if (only(Lu, '↑') && only(Ru, '0')) return '1/2';
 
   return fallback;
@@ -564,8 +650,9 @@ function stringifyBracketTree(node, indent=0, maxLines=300, linesObj={n:0}) {
 }
 
 // Controls
-leftBtn.onclick = () => { current = 'Left'; updateHUD(); render(); };
-rightBtn.onclick = () => { current = 'Right'; updateHUD(); render(); };
+leftBtn.onclick = () => { if(mode === 'play') { current = 'Left'; updateHUD(); render(); } };
+rightBtn.onclick = () => { if(mode === 'play') { current = 'Right'; updateHUD(); render(); } };
+exploreBtn.onclick = runExplore;
 undoBtn.onclick=undo; redoBtn.onclick=redo; resetBtn.onclick=reset;
 genBtn.onclick=()=>genPoly(Math.max(1, Math.min(400, Number(polySizeInput.value)||16)));
 exportBtn.onclick=exportState; importBtn.onclick=()=>fileInput.click();

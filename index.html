@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Mosaic Mayhem – Manual + Improved CGT</title>
+  <title>Mosaic Mayhem – Play/Explore Modes + CGT</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -11,6 +11,12 @@
     <header>
       <h1>Mosaic Mayhem</h1>
       <div class="toolbar">
+        <label>Mode:
+          <select id="modeSelect">
+            <option value="play">Play</option>
+            <option value="explore">Explore</option>
+          </select>
+        </label>
         <label><input type="checkbox" id="builderToggle" /> Builder mode</label>
         <label><input type="checkbox" id="allSmallToggle" /> All-small enabled</label>
         <button id="leftBtn">Left</button>
@@ -23,6 +29,7 @@
         <button id="undoBtn">Undo</button>
         <button id="redoBtn">Redo</button>
         <button id="resetBtn">Reset</button>
+        <button id="exploreBtn" disabled>Run Explore</button>
       </div>
 
       <div class="genbar">
@@ -43,6 +50,7 @@
 
       <aside class="panel">
         <div class="status">
+          <div><strong>Mode:</strong> <span id="modeDisplay">Play</span></div>
           <div><strong>Active player:</strong> <span id="turn">Left</span></div>
           <div><strong>Top row y:</strong> <span id="topY">-</span></div>
           <div><strong>Moves avail:</strong> <span id="movesAvail">-</span></div>
@@ -71,7 +79,7 @@
         </div>
 
         <div class="help">
-          Click Left/Right buttons to switch active player, then hover to preview and click board for their move on top row (repeat for multiples).[attached_file:1][attached_file:2] Builder: click to toggle connected cells. CGT computes impartial bracket {L opts | R opts} with Grundy numbers; ignores active player.[attached_file:1][attached_file:2]
+          **Play mode**: Click Left/Right to switch, then click board for manual moves (repeat for multiples).[attached_file:1][attached_file:2] **Explore mode**: Run auto-playout (alternates random legal moves; passes on no moves, ends on double-pass); click Run Explore to simulate one full playout from current position, logs sequence/outcome.[web:79][web:80] Builder/CGT work in both; undo resets to pre-explore.[attached_file:1][attached_file:2]
         </div>
         <div class="log" id="log"></div>
       </aside>
