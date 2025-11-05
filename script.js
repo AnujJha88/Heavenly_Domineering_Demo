@@ -275,48 +275,54 @@ function animatePlace(cellsPlaced, color, edge, done){
   anim=requestAnimationFrame(frame);
 }
 
-function placeMove(x,y){ // Auto-alternate if successful
+function placeMove(x,y){ // Auto-alternate BEFORE animation
   if(mode !== 'play') return;
   const topY=getTopY(); if(topY===-1) return;
   const avail=legalMoves(current);
   const isDominoAvail = avail.length>0;
-  let moveMade = false;
+  
   if(current==='Left' && y===topY && isEmpty(x,y) && isEmpty(x,y+1)){
     pushUndo();
     occ.set(key(x,y),2); occ.set(key(x,y+1),2);
     log(`${current} places vertical at (${x},${y})`);
+    const wasLeft = 'Left';
+    current = 'Right'; // Switch IMMEDIATELY
+    updateHUD(); render(); // Show new player RIGHT NOW
     animatePlace([{x,y},{x,y:y+1}], getCss('--blue'), getCss('--blue-edge'), ()=>{ 
-      current = 'Right'; // Auto-alternate
-      render(); updateHUD(); 
+      render(); 
     });
-    moveMade = true;
     return;
   }
+  
   if(current==='Right' && y===topY && isEmpty(x,y) && isEmpty(x+1,y)){
     pushUndo();
     occ.set(key(x,y),3); occ.set(key(x+1,y),3);
     log(`${current} places horizontal at (${x},${y})`);
+    const wasRight = 'Right';
+    current = 'Left'; // Switch IMMEDIATELY
+    updateHUD(); render(); // Show new player RIGHT NOW
     animatePlace([{x,y},{x:x+1,y}], getCss('--red'), getCss('--red-edge'), ()=>{ 
-      current = 'Left'; // Auto-alternate
-      render(); updateHUD(); 
+      render(); 
     });
-    moveMade = true;
     return;
   }
+  
   if(!isDominoAvail && allSmallToggle.checked){
     const g=legalAllSmallPlaceLocal(occ);
     if(g && g.x===x && g.y===y){
       pushUndo(); occ.set(key(x,y),4);
       log(`${current} places 1x1 at (${x},${y})`);
+      const wasPlayer = current;
+      current = current === 'Left' ? 'Right' : 'Left'; // Switch IMMEDIATELY
+      updateHUD(); render(); // Show new player RIGHT NOW
       animatePlace([{x,y}], getCss('--green'), getCss('--green-edge'), ()=>{ 
-        current = current === 'Left' ? 'Right' : 'Left'; // Auto-alternate
-        render(); updateHUD(); 
+        render(); 
       });
-      moveMade = true;
+      return;
     }
   }
-  if(!moveMade) log('Invalid move - try again.');
 }
+
 
 // Explore: Repeated simulations
 function cloneState(){
