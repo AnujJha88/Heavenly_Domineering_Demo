@@ -1,4 +1,4 @@
-// Mosaic Mayhem – Play/Explore Modes + Enhanced CGT
+// Mosaic Mayhem – Alternating Play/Explore (Repeated) + CGT
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 
@@ -13,6 +13,8 @@ const allSmallToggle = document.getElementById('allSmallToggle');
 const leftBtn = document.getElementById('leftBtn');
 const rightBtn = document.getElementById('rightBtn');
 const exploreBtn = document.getElementById('exploreBtn');
+const repeatsLabel = document.getElementById('repeatsLabel');
+const repeatsInput = document.getElementById('repeatsInput');
 
 const zoomEl = document.getElementById('zoom');
 const showGridEl = document.getElementById('showGrid');
@@ -56,7 +58,7 @@ let undoStack = [];
 let redoStack = [];
 let anim = null;
 
-// Helpers
+// Helpers (unchanged)
 const key = (x,y)=>`${x},${y}`;
 const parseKey = s => { const [x,y]=s.split(',').map(Number); return {x,y}; };
 function getCss(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -114,7 +116,7 @@ function legalAllSmallPlaceLocal(oMap){
   return null;
 }
 
-// Rendering (unchanged from previous)
+// Rendering
 function crispLineRect(x,y,w,h){ const o=0.5; ctx.strokeRect(Math.floor(x)+o,Math.floor(y)+o,Math.floor(w)-1,Math.floor(h)-1); }
 
 function drawTileBackground(x,y){
@@ -200,10 +202,10 @@ function render(){
   drawTopRowGlow();
   drawAllPieces(occ);
   if(mode === 'play' && !builderToggle.checked && hoverCell) drawGhost(hoverCell.x, hoverCell.y);
-  // Update button states
   leftBtn.classList.toggle('active', current === 'Left' && mode === 'play');
   rightBtn.classList.toggle('active', current === 'Right' && mode === 'play');
   exploreBtn.disabled = mode !== 'explore';
+  repeatsLabel.style.display = mode === 'explore' ? 'flex' : 'none';
 }
 
 // Interaction
@@ -226,14 +228,14 @@ function eventToCell(e){
 // Mode handling
 modeSelect.onchange = () => {
   mode = modeSelect.value;
-  modeDisplay.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
-  current = 'Left'; // Reset to Left on mode switch
+  modeDisplay.textContent = mode === 'play' ? 'Play (Alternating)' : 'Explore (Repeated Sims)';
+  current = 'Left';
   if(mode === 'play'){ leftBtn.disabled = false; rightBtn.disabled = false; canvas.style.cursor = 'default'; }
   else { leftBtn.disabled = true; rightBtn.disabled = true; canvas.style.cursor = 'not-allowed'; }
   updateHUD(); render();
 };
 
-// Moves (Play mode only)
+// Moves (Play: auto-alternate on success)
 function pushUndo(){
   undoStack.push({occ:new Map(occ), current, cells:new Set(cells), mode, allSmall: allSmallToggle.checked });
   if(undoStack.length>200) undoStack.shift();
@@ -241,17 +243,17 @@ function pushUndo(){
 }
 function undo(){ if(!undoStack.length) return;
   const s=undoStack.pop(); redoStack.push({occ:new Map(occ), current, cells:new Set(cells), mode, allSmall: allSmallToggle.checked });
-  occ=s.occ; current=s.current; cells=s.cells; mode=s.mode; allSmallToggle.checked=s.allSmall; modeSelect.value=mode; modeDisplay.textContent=mode.charAt(0).toUpperCase() + mode.slice(1);
+  occ=s.occ; current=s.current; cells=s.cells; mode=s.mode; allSmallToggle.checked=s.allSmall; modeSelect.value=mode; modeDisplay.textContent = mode === 'play' ? 'Play (Alternating)' : 'Explore (Repeated Sims)';
   computeBounds(); render(); updateHUD(); log('Undo');
 }
 function redo(){ if(!redoStack.length) return;
   const s=redoStack.pop(); undoStack.push({occ:new Map(occ), current, cells:new Set(cells), mode, allSmall: allSmallToggle.checked });
-  occ=s.occ; current=s.current; cells=s.cells; mode=s.mode; allSmallToggle.checked=s.allSmall; modeSelect.value=mode; modeDisplay.textContent=mode.charAt(0).toUpperCase() + mode.slice(1);
+  occ=s.occ; current=s.current; cells=s.cells; mode=s.mode; allSmallToggle.checked=s.allSmall; modeSelect.value=mode; modeDisplay.textContent = mode === 'play' ? 'Play (Alternating)' : 'Explore (Repeated Sims)';
   computeBounds(); render(); updateHUD(); log('Redo');
 }
 
 function updateHUD(){
-  modeDisplay.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+  modeDisplay.textContent = mode === 'play' ? 'Play (Alternating)' : 'Explore (Repeated Sims)';
   turnEl.textContent=current;
   const topY=getTopY(); topYEl.textContent=topY;
   movesAvailEl.textContent = legalMoves(current).length || (allSmallToggle.checked && legalAllSmallPlaceLocal(occ) ? 1 : 0);
@@ -273,23 +275,32 @@ function animatePlace(cellsPlaced, color, edge, done){
   anim=requestAnimationFrame(frame);
 }
 
-function placeMove(x,y){ // Play mode
+function placeMove(x,y){ // Auto-alternate if successful
   if(mode !== 'play') return;
   const topY=getTopY(); if(topY===-1) return;
   const avail=legalMoves(current);
   const isDominoAvail = avail.length>0;
+  let moveMade = false;
   if(current==='Left' && y===topY && isEmpty(x,y) && isEmpty(x,y+1)){
     pushUndo();
     occ.set(key(x,y),2); occ.set(key(x,y+1),2);
     log(`${current} places vertical at (${x},${y})`);
-    animatePlace([{x,y},{x,y:y+1}], getCss('--blue'), getCss('--blue-edge'), ()=>{ render(); updateHUD(); });
+    animatePlace([{x,y},{x,y:y+1}], getCss('--blue'), getCss('--blue-edge'), ()=>{ 
+      current = 'Right'; // Auto-alternate
+      render(); updateHUD(); 
+    });
+    moveMade = true;
     return;
   }
   if(current==='Right' && y===topY && isEmpty(x,y) && isEmpty(x+1,y)){
     pushUndo();
     occ.set(key(x,y),3); occ.set(key(x+1,y),3);
     log(`${current} places horizontal at (${x},${y})`);
-    animatePlace([{x,y},{x:x+1,y}], getCss('--red'), getCss('--red-edge'), ()=>{ render(); updateHUD(); });
+    animatePlace([{x,y},{x:x+1,y}], getCss('--red'), getCss('--red-edge'), ()=>{ 
+      current = 'Left'; // Auto-alternate
+      render(); updateHUD(); 
+    });
+    moveMade = true;
     return;
   }
   if(!isDominoAvail && allSmallToggle.checked){
@@ -297,75 +308,93 @@ function placeMove(x,y){ // Play mode
     if(g && g.x===x && g.y===y){
       pushUndo(); occ.set(key(x,y),4);
       log(`${current} places 1x1 at (${x},${y})`);
-      animatePlace([{x,y}], getCss('--green'), getCss('--green-edge'), ()=>{ render(); updateHUD(); });
+      animatePlace([{x,y}], getCss('--green'), getCss('--green-edge'), ()=>{ 
+        current = current === 'Left' ? 'Right' : 'Left'; // Auto-alternate
+        render(); updateHUD(); 
+      });
+      moveMade = true;
     }
   }
+  if(!moveMade) log('Invalid move - try again.');
 }
 
-// Explore mode: Auto-playout simulation
+// Explore: Repeated simulations
 function cloneState(){
   return { occ: new Map(occ), current, cells: new Set(cells), allSmall: allSmallToggle.checked };
 }
 
-function runExplore(){
-  if(mode !== 'explore') return;
+function singlePlayout(){
   const startState = cloneState();
   let state = cloneState();
   let simCurrent = startState.current;
   let passCount = 0;
-  let logPrefix = 'Explore: ';
-  log(`${logPrefix}Starting playout from current position.`);
+  let movesLog = []; // Brief log for stats
 
   while(passCount < 2){
     const topY = getTopYLocal(state.occ);
-    if(topY === -1){ log(`${logPrefix}No top row - terminal.`); break; }
+    if(topY === -1){ movesLog.push('Terminal - no top row'); break; }
 
     const moves = legalMovesForSim(simCurrent, state);
     if(moves.length === 0){
       if(allSmallToggle.checked){
         const g = legalAllSmallPlaceLocal(state.occ);
         if(g){
-          // Place green (shared, but for sim, assign to current)
           state.occ.set(key(g.x, g.y), 4);
-          log(`${logPrefix}${simCurrent} places 1x1 at (${g.x},${g.y})`);
+          movesLog.push(`${simCurrent} places 1x1 at (${g.x},${g.y})`);
           passCount = 0;
+          simCurrent = simCurrent === 'Left' ? 'Right' : 'Left';
           continue;
         }
       }
-      log(`${logPrefix}${simCurrent} has no moves - pass.`);
+      movesLog.push(`${simCurrent} pass`);
       passCount++;
       simCurrent = simCurrent === 'Left' ? 'Right' : 'Left';
       continue;
     }
 
-    // Random move
     const move = moves[Math.floor(Math.random() * moves.length)];
     if(move.kind === 'V'){
       state.occ.set(key(move.x, move.y), 2);
       state.occ.set(key(move.x, move.y+1), 2);
-      log(`${logPrefix}${simCurrent} places vertical at (${move.x},${move.y})`);
+      movesLog.push(`${simCurrent} V at (${move.x},${move.y})`);
     } else if(move.kind === 'H'){
       state.occ.set(key(move.x, move.y), 3);
       state.occ.set(key(move.x+1, move.y), 3);
-      log(`${logPrefix}${simCurrent} places horizontal at (${move.x},${move.y})`);
+      movesLog.push(`${simCurrent} H at (${move.x},${move.y})`);
     }
     passCount = 0;
     simCurrent = simCurrent === 'Left' ? 'Right' : 'Left';
   }
 
-  // Outcome: Count remaining empties per "side" (impartial, but approx by color or total)
+  // Outcome: Last mover wins (simCurrent is next, so opponent won)
+  const winner = simCurrent === 'Left' ? 'Right' : 'Left'; // Opponent of would-be next
   const remainingEmpties = cells.size - [...state.occ.values()].filter(v => v > 0).length;
-  const winner = remainingEmpties === 0 ? 'Draw' : (simCurrent === 'Left' ? 'Right wins' : 'Left wins'); // Last mover wins, or by empties
-  log(`${logPrefix}Playout ended: ${winner} (remaining empties: ${remainingEmpties}).`);
+  return { winner, empties: remainingEmpties, log: movesLog };
+}
 
-  // Restore original
-  occ = startState.occ;
-  current = startState.current;
-  cells = startState.cells;
-  allSmallToggle.checked = startState.allSmall;
-  computeBounds(); render(); updateHUD();
+function runExplore(){
+  if(mode !== 'explore') return;
+  const repeats = Number(repeatsInput.value) || 1;
+  let leftWins = 0, rightWins = 0, totalEmpties = 0;
+  log(`Explore: Running ${repeats} repeated simulations...`);
 
-  // Optional: Compute CGT on final sim state if button pressed, but log here
+  for(let i = 0; i < repeats; i++){
+    const result = singlePlayout();
+    if(result.winner === 'Left') leftWins++;
+    else rightWins++;
+    totalEmpties += result.empties;
+    if(repeats === 1) log(`Sim ${i+1}: ${result.log.join('; ')} → ${result.winner} wins (${result.empties} empties)`);
+  }
+
+  if(repeats > 1){
+    const leftRate = ((leftWins / repeats) * 100).toFixed(1);
+    const rightRate = ((rightWins / repeats) * 100).toFixed(1);
+    const avgEmpties = (totalEmpties / repeats).toFixed(1);
+    log(`Explore stats (${repeats} sims): Left win rate ${leftRate}%, Right ${rightRate}%, Avg empties ${avgEmpties}`);
+  }
+
+  // Restore original (no change from sims)
+  render(); updateHUD();
 }
 
 function legalMovesForSim(side, state){
@@ -380,7 +409,7 @@ function legalMovesForSim(side, state){
   return moves;
 }
 
-// Builder (works in both modes)
+// Builder
 function toggleCell(x,y){
   const k=key(x,y);
   if(!cells.has(k)){
@@ -409,7 +438,7 @@ function isConnected(){
   return seen.size===cells.size;
 }
 
-// Generator with random (unchanged)
+// Generator
 function genPoly(n=16){
   pushUndo(); cells.clear(); occ.clear();
   let frontier=[{x:0,y:0}]; cells.add(key(0,0));
@@ -433,7 +462,7 @@ function normalizeOrigin(){
   cells=newCells; occ=newOcc;
 }
 
-// IO (updated to save mode)
+// IO
 function exportState(){
   const obj={ cells:[...cells].map(parseKey), occ:[...occ].map(([kk,v])=>({cell:parseKey(kk),v})), current, mode, allSmall: allSmallToggle.checked };
   const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
@@ -454,9 +483,9 @@ function importState(file){
   fr.readAsText(file);
 }
 
-// Reset with random (unchanged)
+// Reset
 function reset(){
-  const randSize = Math.floor(Math.random() * 9) + 12; // 12-20
+  const randSize = Math.floor(Math.random() * 9) + 12;
   genPoly(randSize);
   current = 'Left';
   mode = 'play'; modeSelect.value = 'play';
@@ -465,7 +494,7 @@ function reset(){
   log(`Reset with random board of size ${randSize}`);
 }
 
-// CGT (unchanged from previous)
+// CGT (unchanged)
 function cloneOcc(o){ return new Map(o); }
 function stateKey(o){
   const arr=[];
@@ -608,7 +637,6 @@ function computeBracket(o, depth, memo) {
 function heuristicSimplifyEnhanced(Lu, Ru, fallback) {
   const only = (arr, s) => arr.length === 1 && arr[0].bracket === s;
   const empty = arr => arr.length === 0;
-  const allSame = (arr, g) => arr.every(n => n.grundy === g);
 
   if (empty(Lu) && empty(Ru)) return '0';
 

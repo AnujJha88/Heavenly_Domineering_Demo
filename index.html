@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Mosaic Mayhem – Play/Explore Modes + CGT</title>
+  <title>Mosaic Mayhem – Alternating Play/Explore + CGT</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -13,8 +13,8 @@
       <div class="toolbar">
         <label>Mode:
           <select id="modeSelect">
-            <option value="play">Play</option>
-            <option value="explore">Explore</option>
+            <option value="play">Play (Alternating)</option>
+            <option value="explore">Explore (Repeated Sims)</option>
           </select>
         </label>
         <label><input type="checkbox" id="builderToggle" /> Builder mode</label>
@@ -29,6 +29,9 @@
         <button id="undoBtn">Undo</button>
         <button id="redoBtn">Redo</button>
         <button id="resetBtn">Reset</button>
+        <label id="repeatsLabel" style="display:none;">Repeated Sims:
+          <input type="number" id="repeatsInput" value="10" min="1" max="100" />
+        </label>
         <button id="exploreBtn" disabled>Run Explore</button>
       </div>
 
@@ -50,7 +53,7 @@
 
       <aside class="panel">
         <div class="status">
-          <div><strong>Mode:</strong> <span id="modeDisplay">Play</span></div>
+          <div><strong>Mode:</strong> <span id="modeDisplay">Play (Alternating)</span></div>
           <div><strong>Active player:</strong> <span id="turn">Left</span></div>
           <div><strong>Top row y:</strong> <span id="topY">-</span></div>
           <div><strong>Moves avail:</strong> <span id="movesAvail">-</span></div>
@@ -79,7 +82,7 @@
         </div>
 
         <div class="help">
-          **Play mode**: Click Left/Right to switch, then click board for manual moves (repeat for multiples).[attached_file:1][attached_file:2] **Explore mode**: Run auto-playout (alternates random legal moves; passes on no moves, ends on double-pass); click Run Explore to simulate one full playout from current position, logs sequence/outcome.[web:79][web:80] Builder/CGT work in both; undo resets to pre-explore.[attached_file:1][attached_file:2]
+          **Play mode (Alternating)**: Starts with Left; click board to place for active player, auto-switches to opponent after move (buttons for manual switch).[attached_file:1][attached_file:2] **Explore mode (Repeated Sims)**: Run single (1) or multiple playouts (via input, e.g., 10); each simulates alternating random moves/passes until terminal, aggregates stats (win rates by empties).[web:85][web:86] Builder/CGT in both; undo restores pre-sim.[attached_file:1][attached_file:2]
         </div>
         <div class="log" id="log"></div>
       </aside>

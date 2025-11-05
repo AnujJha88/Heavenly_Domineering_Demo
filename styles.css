@@ -47,7 +47,9 @@ body {
 .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
 header h1 { margin: 0 0 10px; font-weight: 700; letter-spacing: 0.5px; }
 .toolbar, .genbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
-label { color: var(--muted); }
+label { color: var(--muted); display: flex; align-items: center; gap: 5px; }
+#repeatsLabel input[type="number"] { width: 60px; }
+
 select { background: var(--panel); color: var(--text); border: 1px solid #2f3b50; border-radius: 6px; padding: 6px; }
 
 button {
@@ -68,7 +70,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 #exploreBtn:hover { box-shadow: 0 0 12px var(--green), inset 0 0 0 2px var(--green-edge); }
 
 input[type="number"], input[type="range"] {
-  width: 80px; background: var(--panel); color: var(--text);
+  background: var(--panel); color: var(--text);
   border: 1px solid #2f3b50; border-radius: 6px; padding: 6px;
 }
 
