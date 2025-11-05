@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Mosaic Mayhem – Manual + Improved CGT</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Mosaic Mayhem</h1>
+      <div class="toolbar">
+        <label><input type="checkbox" id="builderToggle" /> Builder mode</label>
+        <label><input type="checkbox" id="allSmallToggle" /> All-small enabled</label>
+        <button id="leftBtn">Left</button>
+        <button id="rightBtn">Right</button>
+        <label>Zoom
+          <input type="range" id="zoom" min="16" max="56" step="2" value="32">
+        </label>
+        <label><input type="checkbox" id="showGrid" checked> Grid</label>
+        <label><input type="checkbox" id="themeToggle"> Light theme</label>
+        <button id="undoBtn">Undo</button>
+        <button id="redoBtn">Redo</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+
+      <div class="genbar">
+        <label>Random polyomino size:
+          <input type="number" id="polySize" value="16" min="1" max="400" />
+        </label>
+        <button id="genBtn">Generate</button>
+        <button id="importBtn">Import</button>
+        <button id="exportBtn">Export</button>
+        <input type="file" id="fileInput" accept="application/json" style="display:none;" />
+      </div>
+    </header>
+
+    <main>
+      <div class="stage">
+        <canvas id="board" width="800" height="600"></canvas>
+      </div>
+
+      <aside class="panel">
+        <div class="status">
+          <div><strong>Active player:</strong> <span id="turn">Left</span></div>
+          <div><strong>Top row y:</strong> <span id="topY">-</span></div>
+          <div><strong>Moves avail:</strong> <span id="movesAvail">-</span></div>
+        </div>
+
+        <div class="legend">
+          <div><span class="swatch blue"></span> Left (vertical)</div>
+          <div><span class="swatch red"></span> Right (horizontal)</div>
+          <div><span class="swatch green"></span> 1×1 (all-small)</div>
+        </div>
+
+        <div class="cgt">
+          <h3>CGT Tools</h3>
+          <div class="cgt-row">
+            <label>Depth
+              <input type="number" id="cgtDepth" value="4" min="1" max="8" />
+            </label>
+            <label><input type="checkbox" id="cgtEval" checked> Numeric eval</label>
+          </div>
+          <div class="cgt-row">
+            <button id="cgtComputeBtn">Compute</button>
+            <button id="cgtCopyBtn">Copy</button>
+            <button id="cgtExportBtn">Export JSON</button>
+          </div>
+          <pre id="cgtOut" class="cgt-box"></pre>
+        </div>
+
+        <div class="help">
+          Click Left/Right buttons to switch active player, then hover to preview and click board for their move on top row (repeat for multiples).[attached_file:1][attached_file:2] Builder: click to toggle connected cells. CGT computes impartial bracket {L opts | R opts} with Grundy numbers; ignores active player.[attached_file:1][attached_file:2]
+        </div>
+        <div class="log" id="log"></div>
+      </aside>
+    </main>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
