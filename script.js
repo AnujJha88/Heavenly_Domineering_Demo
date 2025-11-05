@@ -472,7 +472,7 @@ function normalizeOrigin(){
 function exportState(){
   const obj={ cells:[...cells].map(parseKey), occ:[...occ].map(([kk,v])=>({cell:parseKey(kk),v})), current, mode, allSmall: allSmallToggle.checked };
   const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='mosaic_mayhem.json'; a.click(); URL.revokeObjectURL(url);
+  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='heavenly_domineering.json'; a.click(); URL.revokeObjectURL(url);
 }
 function importState(file){
   const fr=new FileReader();
