@@ -133,25 +133,38 @@ function getEmptyComponents(oMap) {
   return components;
 }
 
-// Updated move generation: checks top of EACH component
+// Returns all legal moves for a player in any component
 function legalMoves(side) {
   const moves = [];
-  const components = getEmptyComponents(occ);
-
-  for (const comp of components) {
-    let compTopY = Math.min(...comp.map(s => parseKey(s).y));
-
-    for (const s of comp) {
+  
+  // Check all empty cells for possible moves
+  for (const s of cells) {
+    const {x, y} = parseKey(s);
+    
+    // Skip occupied cells
+    if (!isEmpty(x, y)) continue;
+    
+    // Check for vertical domino placement (Left player)
+    if (side === 'Left' && isEmpty(x, y + 1)) {
+      moves.push({side, kind: 'V', x, y});
+    }
+    
+    // Check for horizontal domino placement (Right player)
+    if (side === 'Right' && isEmpty(x + 1, y)) {
+      moves.push({side, kind: 'H', x, y});
+    }
+  }
+  
+  // If no moves available, check for 1x1 moves if enabled
+  if (moves.length === 0 && allSmallToggle.checked) {
+    for (const s of cells) {
       const {x, y} = parseKey(s);
-      if (y !== compTopY) continue;
-
-      if (side === 'Left') {
-        if (isEmpty(x, y + 1)) moves.push({side, kind: 'V', x, y});
-      } else {
-        if (isEmpty(x + 1, y)) moves.push({side, kind: 'H', x, y});
+      if (isEmpty(x, y)) {
+        moves.push({side, kind: 'S', x, y});
       }
     }
   }
+  
   return moves;
 }
 
@@ -335,52 +348,82 @@ function animatePlace(cellsPlaced, color, edge, done){
   anim=requestAnimationFrame(frame);
 }
 
-function placeMove(x,y){ // Auto-alternate BEFORE animation
-  if(mode !== 'play') return;
-  const topY=getTopY(); if(topY===-1) return;
-  const avail=legalMoves(current);
-  const isDominoAvail = avail.length>0;
+function placeMove(x, y) {
+  if (mode !== 'play') return;
   
-  if(current==='Left' && y===topY && isEmpty(x,y) && isEmpty(x,y+1)){
-    pushUndo();
-    occ.set(key(x,y),2); occ.set(key(x,y+1),2);
-    log(`${current} places vertical at (${x},${y})`);
-    const wasLeft = 'Left';
-    current = 'Right'; // Switch IMMEDIATELY
-    updateHUD(); render(); // Show new player RIGHT NOW
-    animatePlace([{x,y},{x,y:y+1}], getCss('--blue'), getCss('--blue-edge'), ()=>{ 
-      render(); 
-    });
+  const avail = legalMoves(current);
+  
+  // Check if the current player has any legal moves
+  if (avail.length === 0) {
+    log(`Game over! ${current} has no legal moves.`);
     return;
   }
   
-  if(current==='Right' && y===topY && isEmpty(x,y) && isEmpty(x+1,y)){
-    pushUndo();
-    occ.set(key(x,y),3); occ.set(key(x+1,y),3);
-    log(`${current} places horizontal at (${x},${y})`);
-    const wasRight = 'Right';
-    current = 'Left'; // Switch IMMEDIATELY
-    updateHUD(); render(); // Show new player RIGHT NOW
-    animatePlace([{x,y},{x:x+1,y}], getCss('--red'), getCss('--red-edge'), ()=>{ 
-      render(); 
-    });
-    return;
-  }
+  // Check if the clicked position is a valid move
+  let isValidMove = false;
+  let moveType = '';
   
-  if(!isDominoAvail && allSmallToggle.checked){
-    const g=legalAllSmallPlaceLocal(occ);
-    if(g && g.x===x && g.y===y){
-      pushUndo(); occ.set(key(x,y),4);
-      log(`${current} places 1x1 at (${x},${y})`);
-      const wasPlayer = current;
-      current = current === 'Left' ? 'Right' : 'Left'; // Switch IMMEDIATELY
-      updateHUD(); render(); // Show new player RIGHT NOW
-      animatePlace([{x,y}], getCss('--green'), getCss('--green-edge'), ()=>{ 
-        render(); 
-      });
-      return;
+  // Check for vertical domino placement (Left player)
+  if (current === 'Left' && isEmpty(x, y) && isEmpty(x, y + 1)) {
+    isValidMove = true;
+    moveType = 'V';
+  } 
+  // Check for horizontal domino placement (Right player)
+  else if (current === 'Right' && isEmpty(x, y) && isEmpty(x + 1, y)) {
+    isValidMove = true;
+    moveType = 'H';
+  }
+  // Check for 1x1 placement if enabled and no domino moves available
+  else if (allSmallToggle.checked && isEmpty(x, y)) {
+    // Only allow 1x1 if no domino moves are available
+    const dominoMoves = avail.filter(m => m.kind !== 'S');
+    if (dominoMoves.length === 0) {
+      isValidMove = true;
+      moveType = 'S';
     }
   }
+  
+  if (!isValidMove) return;
+  
+  pushUndo();
+  
+  // Handle the move based on type
+  if (moveType === 'V') {
+    occ.set(key(x, y), 2); 
+    occ.set(key(x, y + 1), 2);
+    log(`${current} places vertical at (${x},${y})`);
+    animatePlace([{x, y}, {x, y: y + 1}], 
+                getCss('--blue'), 
+                getCss('--blue-edge'));
+  } 
+  else if (moveType === 'H') {
+    occ.set(key(x, y), 3); 
+    occ.set(key(x + 1, y), 3);
+    log(`${current} places horizontal at (${x},${y})`);
+    animatePlace([{x, y}, {x: x + 1, y}], 
+                getCss('--red'), 
+                getCss('--red-edge'));
+  }
+  else if (moveType === 'S') {
+    occ.set(key(x, y), 4);
+    log(`${current} places 1x1 at (${x},${y})`);
+    animatePlace([{x, y}], 
+                getCss('--green'), 
+                getCss('--green-edge'));
+  }
+  
+  // Switch players and check for game over
+  current = current === 'Left' ? 'Right' : 'Left';
+  
+  // Check if the next player has any legal moves
+  const nextMoves = legalMoves(current);
+  if (nextMoves.length === 0) {
+    log(`Game over! ${current} has no legal moves.`);
+    // Optionally, you could show a game over message here
+  }
+  
+  updateHUD();
+  render();
 }
 
 
