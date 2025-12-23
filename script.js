@@ -26,6 +26,7 @@ const resetBtn = document.getElementById('resetBtn');
 
 const genBtn = document.getElementById('genBtn');
 const polySizeInput = document.getElementById('polySize');
+const numComponentsInput = document.getElementById('numComponents');
 const exportBtn = document.getElementById('exportBtn');
 const importBtn = document.getElementById('importBtn');
 const fileInput = document.getElementById('fileInput');
@@ -97,22 +98,73 @@ function getTopYLocal(oMap){
 }
 function getTopY(){ return getTopYLocal(occ); }
 
-function legalMoves(side){
-  const topY=getTopY();
-  const moves=[];
-  if(topY===-1) return moves;
-  if(side==='Left'){
-    for(const s of cells){ const {x,y}=parseKey(s); if(y!==topY) continue; if(isEmpty(x,y) && isEmpty(x,y+1)) moves.push({side,kind:'V',x,y}); }
-  }else{
-    for(const s of cells){ const {x,y}=parseKey(s); if(y!==topY) continue; if(isEmpty(x,y) && isEmpty(x+1,y)) moves.push({side,kind:'H',x,y}); }
+// Helper to find all independent connected components of empty cells
+function getEmptyComponents(oMap) {
+  const emptyKeys = new Set();
+  for (const s of cells) {
+    const {x, y} = parseKey(s);
+    if (isEmptyLocal(oMap, x, y)) emptyKeys.add(s);
+  }
+
+  const components = [];
+  const seen = new Set();
+
+  for (const s of emptyKeys) {
+    if (seen.has(s)) continue;
+    const currentComponent = [];
+    const queue = [s];
+    seen.add(s);
+
+    while (queue.length > 0) {
+      const currKey = queue.shift();
+      currentComponent.push(currKey);
+      const {x, y} = parseKey(currKey);
+
+      for (const [dx, dy] of [[1,0], [-1,0], [0,1], [0,-1]]) {
+        const neighbor = key(x + dx, y + dy);
+        if (emptyKeys.has(neighbor) && !seen.has(neighbor)) {
+          seen.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+    }
+    components.push(currentComponent);
+  }
+  return components;
+}
+
+// Updated move generation: checks top of EACH component
+function legalMoves(side) {
+  const moves = [];
+  const components = getEmptyComponents(occ);
+
+  for (const comp of components) {
+    let compTopY = Math.min(...comp.map(s => parseKey(s).y));
+
+    for (const s of comp) {
+      const {x, y} = parseKey(s);
+      if (y !== compTopY) continue;
+
+      if (side === 'Left') {
+        if (isEmpty(x, y + 1)) moves.push({side, kind: 'V', x, y});
+      } else {
+        if (isEmpty(x + 1, y)) moves.push({side, kind: 'H', x, y});
+      }
+    }
   }
   return moves;
 }
 
-function legalAllSmallPlaceLocal(oMap){
-  const topY=getTopYLocal(oMap);
-  if(topY===-1) return null;
-  for(const s of cells){ const {x,y}=parseKey(s); if(y!==topY) continue; if(isEmptyLocal(oMap,x,y)) return {x,y}; }
+// Updated All-Small logic: places at the top of any component
+function legalAllSmallPlaceLocal(oMap) {
+  const components = getEmptyComponents(oMap);
+  for (const comp of components) {
+    let compTopY = Math.min(...comp.map(s => parseKey(s).y));
+    for (const s of comp) {
+      const {x, y} = parseKey(s);
+      if (y === compTopY) return {x, y};
+    }
+  }
   return null;
 }
 
@@ -142,14 +194,22 @@ function drawSubsetGrid(){
   }
 }
 
-function drawTopRowGlow(){
-  const topY=getTopY(); if(topY===-1) return;
-  const {px,py}=toPx(bounds.minX,topY);
-  const width=(bounds.maxX-bounds.minX+1)*CELL;
-  ctx.save(); ctx.shadowColor='rgba(255,214,0,0.6)'; ctx.shadowBlur=18; ctx.fillStyle='rgba(255,214,0,0.12)'; ctx.fillRect(px,py,width,CELL); ctx.restore();
-  const grad=ctx.createLinearGradient(px,py,px,py+CELL);
-  grad.addColorStop(0,'rgba(255,214,0,0.22)'); grad.addColorStop(1,'rgba(255,214,0,0.06)');
-  ctx.fillStyle=grad; ctx.fillRect(px,py,width,CELL);
+// Highlight ALL component tops
+function drawTopRowGlow() {
+  const components = getEmptyComponents(occ);
+  ctx.save();
+  for (const comp of components) {
+    let compTopY = Math.min(...comp.map(s => parseKey(s).y));
+    for (const s of comp) {
+      const {x, y} = parseKey(s);
+      if (y === compTopY) {
+        const {px, py} = toPx(x, y);
+        ctx.fillStyle = 'rgba(255,214,0,0.15)';
+        ctx.fillRect(px, py, CELL, CELL);
+      }
+    }
+  }
+  ctx.restore();
 }
 
 function drawPiece(x,y,color,edge){
@@ -445,18 +505,65 @@ function isConnected(){
 }
 
 // Generator
-function genPoly(n=16){
+function genPoly(n=16, numComponents=1){
   pushUndo(); cells.clear(); occ.clear();
-  let frontier=[{x:0,y:0}]; cells.add(key(0,0));
-  while(cells.size<n){
-    const base=frontier[Math.floor(Math.random()*frontier.length)];
-    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-    const [dx,dy]=dirs[Math.floor(Math.random()*dirs.length)];
-    const nx=base.x+dx, ny=base.y+dy, kk=key(nx,ny);
-    if(!cells.has(kk)){ cells.add(kk); frontier.push({x:nx,y:ny}); }
+  
+  if (numComponents === 1) {
+    // Original single component generation
+    let frontier=[{x:0,y:0}]; cells.add(key(0,0));
+    while(cells.size<n){
+      const base=frontier[Math.floor(Math.random()*frontier.length)];
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+      const [dx,dy]=dirs[Math.floor(Math.random()*dirs.length)];
+      const nx=base.x+dx, ny=base.y+dy, kk=key(nx,ny);
+      if(!cells.has(kk)){ cells.add(kk); frontier.push({x:nx,y:ny}); }
+    }
+  } else {
+    // Multi-component generation
+    const totalSize = n;
+    const baseSize = Math.floor(totalSize / numComponents);
+    const extra = totalSize % numComponents;
+    
+    for (let c = 0; c < numComponents; c++) {
+      const compSize = baseSize + (c < extra ? 1 : 0);
+      if (compSize === 0) continue;
+      
+      // Find a starting position that doesn't overlap with existing cells
+      let startX, startY, attempts = 0;
+      do {
+        startX = Math.floor(Math.random() * 20) - 10;
+        startY = Math.floor(Math.random() * 20) - 10;
+        attempts++;
+      } while (attempts < 100 && [...cells].some(s => {
+        const {x,y} = parseKey(s);
+        return Math.abs(x - startX) < 3 && Math.abs(y - startY) < 3;
+      }));
+      
+      // Generate component
+      let compCells = new Set();
+      let frontier = [{x: startX, y: startY}];
+      compCells.add(key(startX, startY));
+      
+      while (compCells.size < compSize) {
+        const base = frontier[Math.floor(Math.random() * frontier.length)];
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        const [dx,dy] = dirs[Math.floor(Math.random() * dirs.length)];
+        const nx = base.x + dx, ny = base.y + dy, kk = key(nx, ny);
+        if (!compCells.has(kk) && !cells.has(kk)) {
+          compCells.add(kk);
+          frontier.push({x: nx, y: ny});
+        }
+      }
+      
+      // Add component to main cells
+      for (const s of compCells) {
+        cells.add(s);
+      }
+    }
   }
+  
   for(const s of cells) occ.set(s,0);
-  normalizeOrigin(); computeBounds(); render(); updateHUD(); log(`Generated polyomino of size ${n}`);
+  normalizeOrigin(); computeBounds(); render(); updateHUD(); log(`Generated ${numComponents} component(s) with total size ${n}`);
 }
 function normalizeOrigin(){
   let minX=Infinity,minY=Infinity;
@@ -509,36 +616,46 @@ function stateKey(o){
   return JSON.stringify(arr);
 }
 
-function enumerateLeftOptions(o){
-  const topY=getTopYLocal(o); if(topY===-1) return [];
-  const opts=[];
-  for(const s of cells){ const {x,y}=parseKey(s);
-    if(y!==topY) continue;
-    if(isEmptyLocal(o,x,y) && isEmptyLocal(o,x,y+1)){
-      const no=cloneOcc(o); no.set(key(x,y),2); no.set(key(x,y+1),2); opts.push(no);
+function enumerateLeftOptions(o) {
+  const moves = [];
+  const components = getEmptyComponents(o);
+  for (const comp of components) {
+    let compTopY = Math.min(...comp.map(s => parseKey(s).y));
+    for (const s of comp) {
+      const {x, y} = parseKey(s);
+      if (y === compTopY && isEmptyLocal(o, x, y + 1)) {
+        const no = cloneOcc(o);
+        no.set(key(x, y), 2); no.set(key(x, y + 1), 2);
+        moves.push(no);
+      }
     }
   }
-  if(opts.length===0 && allSmallToggle.checked){
-    const g=legalAllSmallPlaceLocal(o);
-    if(g){ const no=cloneOcc(o); no.set(key(g.x,g.y),4); opts.push(no); }
+  if (moves.length === 0 && allSmallToggle.checked) {
+    const g = legalAllSmallPlaceLocal(o);
+    if (g) { const no = cloneOcc(o); no.set(key(g.x, g.y), 4); moves.push(no); }
   }
-  return opts;
+  return moves;
 }
 
-function enumerateRightOptions(o){
-  const topY=getTopYLocal(o); if(topY===-1) return [];
-  const opts=[];
-  for(const s of cells){ const {x,y}=parseKey(s);
-    if(y!==topY) continue;
-    if(isEmptyLocal(o,x,y) && isEmptyLocal(o,x+1,y)){
-      const no=cloneOcc(o); no.set(key(x,y),3); no.set(key(x+1,y),3); opts.push(no);
+function enumerateRightOptions(o) {
+  const moves = [];
+  const components = getEmptyComponents(o);
+  for (const comp of components) {
+    let compTopY = Math.min(...comp.map(s => parseKey(s).y));
+    for (const s of comp) {
+      const {x, y} = parseKey(s);
+      if (y === compTopY && isEmptyLocal(o, x + 1, y)) {
+        const no = cloneOcc(o);
+        no.set(key(x, y), 3); no.set(key(x + 1, y), 3);
+        moves.push(no);
+      }
     }
   }
-  if(opts.length===0 && allSmallToggle.checked){
-    const g=legalAllSmallPlaceLocal(o);
-    if(g){ const no=cloneOcc(o); no.set(key(g.x,g.y),4); opts.push(no); }
+  if (moves.length === 0 && allSmallToggle.checked) {
+    const g = legalAllSmallPlaceLocal(o);
+    if (g) { const no = cloneOcc(o); no.set(key(g.x, g.y), 4); moves.push(no); }
   }
-  return opts;
+  return moves;
 }
 
 function enumerateLeftOptionsWithoutGreen(o){
@@ -688,7 +805,7 @@ leftBtn.onclick = () => { if(mode === 'play') { current = 'Left'; updateHUD(); r
 rightBtn.onclick = () => { if(mode === 'play') { current = 'Right'; updateHUD(); render(); } };
 exploreBtn.onclick = runExplore;
 undoBtn.onclick=undo; redoBtn.onclick=redo; resetBtn.onclick=reset;
-genBtn.onclick=()=>genPoly(Math.max(1, Math.min(400, Number(polySizeInput.value)||16)));
+genBtn.onclick=()=>genPoly(Math.max(1, Math.min(400, Number(polySizeInput.value)||16)), Math.max(1, Math.min(10, Number(numComponentsInput.value)||1)));
 exportBtn.onclick=exportState; importBtn.onclick=()=>fileInput.click();
 fileInput.onchange=e=>{ const f=e.target.files[0]; if(f) importState(f); };
 builderToggle.onchange=()=>render();
