@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Elden Web: The Rotting King</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; }
+        #ui-layer { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+        .bar-container { margin-bottom: 8px; }
+        .bar-bg { width: 300px; height: 15px; background: #333; border: 1px solid #555; position: relative; }
+        .bar-fill { height: 100%; transition: width 0.1s; }
+        #hp-bar { background: #aa2222; width: 100%; }
+        #sp-bar { background: #22aa44; width: 100%; }
+        #boss-ui { position: absolute; bottom: 40px; width: 100%; text-align: center; pointer-events: none; display: none;}
+        #boss-hp-bg { width: 600px; height: 20px; background: #333; display: inline-block; border: 2px solid #888; }
+        #boss-hp { width: 100%; height: 100%; background: #662288; transition: width 0.2s; }
+        #boss-name { color: #ccc; margin-bottom: 5px; font-size: 18px; text-transform: uppercase; letter-spacing: 2px; }
+        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #8a2be2; font-size: 80px; font-weight: bold; text-shadow: 0 0 20px #8a2be2; display: none; text-transform: uppercase; letter-spacing: 5px;}
+        #controls { position: absolute; top: 20px; right: 20px; color: #555; text-align: right; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="bar-container">
+            <div class="bar-bg"><div id="hp-bar" class="bar-fill"></div></div>
+        </div>
+        <div class="bar-container">
+            <div class="bar-bg"><div id="sp-bar" class="bar-fill"></div></div>
+        </div>
+    </div>
+
+    <div id="boss-ui">
+        <div id="boss-name">Malor, The Rotting Sentinel</div>
+        <div id="boss-hp-bg"><div id="boss-hp"></div></div>
+    </div>
+
+    <div id="msg">YOU DIED</div>
+    
+    <div id="controls">
+        WASD: Move<br>SPACE: Roll (Dodge)<br>CLICK/K: Attack
+    </div>
+
+    <canvas id="game"></canvas>
+
+<script>
+/** * ELDEN WEB ENGINE
+ * Procedurally generated assets & Soulslike Mechanics
+ */
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = {
+    hp: document.getElementById('hp-bar'),
+    sp: document.getElementById('sp-bar'),
+    bossUi: document.getElementById('boss-ui'),
+    bossHp: document.getElementById('boss-hp'),
+    msg: document.getElementById('msg')
+};
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// --- GAME CONFIG ---
+const GRAVITY = 0; // Top down
+const FRICTION = 0.85;
+const PLAYER_SPEED = 1.2; // Acceleration
+const ROLL_SPEED = 15;
+const ATTACK_COST = 25;
+const ROLL_COST = 30;
+
+// --- INPUT SYSTEM ---
+const keys = {};
+const mouse = { x: 0, y: 0, down: false };
+
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => {
+    keys[e.code] = false;
+    if(e.code === 'KeyR' && gameState.over) resetGame();
+});
+window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+window.addEventListener('mousedown', () => {
+    if(!gameState.over) player.attack();
+});
+window.addEventListener('keydown', e => {
+    if(e.code === 'KeyK' && !gameState.over) player.attack();
+    if(e.code === 'Space' && !gameState.over) player.roll();
+});
+
+// --- HELPERS ---
+function dist(x1, y1, x2, y2) { return Math.hypot(x2-x1, y2-y1); }
+function rand(min, max) { return Math.random() * (max - min) + min; }
+
+// --- PROCEDURAL SPRITE GENERATOR ---
+// Draws complex shapes using code instead of images
+const Sprites = {
+    drawPlayer: (ctx, x, y, angle, state, frame) => {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath(); ctx.ellipse(0, 5, 15, 8, 0, 0, Math.PI*2); ctx.fill();
+
+        // Cape (Animated)
+        ctx.fillStyle = '#800000'; // Dark red
+        ctx.beginPath();
+        const sway = Math.sin(frame * 0.2) * 5;
+        ctx.moveTo(-10, -5);
+        ctx.lineTo(10, -5);
+        ctx.lineTo(8 + sway, 25);
+        ctx.lineTo(-8 + sway, 25);
+        ctx.fill();
+
+        // Body Armor
+        ctx.fillStyle = '#C0C0C0'; // Silver
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.stroke();
+
+        // Helmet Details
+        ctx.fillStyle = '#222';
+        ctx.fillRect(-4, -6, 8, 2); // Visor
+        
+        // Weapon (Sword)
+        ctx.save();
+        if (state === 'attacking') {
+            const swing = Math.min((frame - player.attackStartFrame) * 0.4, 2.5);
+            ctx.rotate(swing - 1.2); 
+            ctx.translate(15, 0);
+        } else {
+            ctx.translate(10, 5);
+            ctx.rotate(0.5);
+        }
+        
+        // Sword Blade
+        ctx.fillStyle = '#DDD';
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(40, 0); ctx.lineTo(35, 5); ctx.lineTo(0, 2); ctx.fill();
+        // Hilt
+        ctx.fillStyle = '#654321';
+        ctx.fillRect(-5, -2, 5, 4);
+        ctx.fillStyle = 'gold';
+        ctx.fillRect(0, -5, 4, 10); // Crossguard
+        
+        ctx.restore();
+        ctx.restore();
+    },
+
+    drawBoss: (ctx, x, y, angle, state, frame) => {
+        ctx.save();
+        ctx.translate(x, y);
+        
+        // Aura
+        ctx.globalAlpha = 0.2 + Math.sin(frame * 0.1) * 0.1;
+        ctx.fillStyle = '#662288';
+        ctx.beginPath(); ctx.arc(0, 0, 60, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1.0;
+
+        ctx.rotate(angle);
+
+        // Body (Large Armor)
+        ctx.fillStyle = '#2a2a2a';
+        ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#662288'; ctx.lineWidth = 3; ctx.stroke();
+
+        // Spikes
+        for(let i=0; i<8; i++) {
+            ctx.save();
+            ctx.rotate(i * (Math.PI/4));
+            ctx.fillStyle = '#444';
+            ctx.beginPath(); ctx.moveTo(25, -5); ctx.lineTo(35, 0); ctx.lineTo(25, 5); ctx.fill();
+            ctx.restore();
+        }
+
+        // Giant Weapon (Great Hammer)
+        ctx.save();
+        if (state === 'attack_windup') {
+             ctx.rotate(-0.5); // Pull back
+        } else if (state === 'attacking') {
+             ctx.rotate(Math.sin(frame * 0.5)); // Swing
+        } else {
+            ctx.rotate(1); // Idle hold
+        }
+        
+        ctx.translate(35, 0);
+        // Handle
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, -4, 60, 8);
+        // Head
+        ctx.fillStyle = '#444';
+        ctx.beginPath(); 
+        ctx.moveTo(50, -15); ctx.lineTo(80, -20); ctx.lineTo(80, 20); ctx.lineTo(50, 15); 
+        ctx.fill();
+        // Glow
+        ctx.shadowBlur = 10; ctx.shadowColor = '#8a2be2';
+        ctx.fillStyle = '#8a2be2';
+        ctx.fillRect(70, -5, 5, 10);
+        ctx.shadowBlur = 0;
+
+        ctx.restore();
+        ctx.restore();
+    }
+};
+
+// --- PARTICLES ---
+let particles = [];
+function spawnParticle(x, y, color, speed, life) {
+    particles.push({
+        x, y, color, life, maxLife: life,
+        vx: (Math.random() - 0.5) * speed,
+        vy: (Math.random() - 0.5) * speed,
+        size: Math.random() * 3 + 1
+    });
+}
+function updateParticles() {
+    particles.forEach((p, i) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+        p.size *= 0.95;
+        if (p.life <= 0) particles.splice(i, 1);
+    });
+}
+function drawParticles() {
+    particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life / p.maxLife;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1;
+    });
+}
+
+// --- GAME STATE ---
+let gameState = { over: false, win: false };
+
+// --- PLAYER CLASS ---
+const player = {
+    x: canvas.width/2, y: canvas.height - 100,
+    vx: 0, vy: 0,
+    angle: 0,
+    hp: 100, maxHp: 100,
+    sp: 100, maxSp: 100,
+    state: 'idle', // idle, moving, rolling, attacking, hit
+    iFrames: 0,
+    attackStartFrame: 0,
+    frame: 0,
+
+    update() {
+        if (gameState.over) return;
+        this.frame++;
+
+        // Stamina Regen
+        if (this.state !== 'rolling' && this.state !== 'attacking' && this.sp < this.maxSp) {
+            this.sp += 0.5;
+        }
+
+        // Movement Physics
+        if (this.state !== 'rolling' && this.state !== 'attacking') {
+            let dx = 0, dy = 0;
+            if (keys['KeyW'] || keys['ArrowUp']) dy = -1;
+            if (keys['KeyS'] || keys['ArrowDown']) dy = 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) dx = -1;
+            if (keys['KeyD'] || keys['ArrowRight']) dx = 1;
+
+            // Normalize vector
+            if (dx !== 0 || dy !== 0) {
+                const len = Math.hypot(dx, dy);
+                dx /= len; dy /= len;
+                this.vx += dx * PLAYER_SPEED;
+                this.vy += dy * PLAYER_SPEED;
+            }
+        }
+
+        // Apply Friction
+        this.vx *= FRICTION;
+        this.vy *= FRICTION;
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Boundaries
+        this.x = Math.max(20, Math.min(canvas.width - 20, this.x));
+        this.y = Math.max(20, Math.min(canvas.height - 20, this.y));
+
+        // Facing Mouse
+        const angle = Math.atan2(mouse.y - this.y, mouse.x - this.x);
+        this.angle = angle;
+
+        // I-Frames logic
+        if (this.iFrames > 0) this.iFrames--;
+
+        // State reset
+        if (this.state === 'rolling' && Math.abs(this.vx) < 1 && Math.abs(this.vy) < 1) this.state = 'idle';
+        if (this.state === 'attacking' && this.frame - this.attackStartFrame > 20) this.state = 'idle';
+
+        // Update UI
+        ui.hp.style.width = (this.hp / this.maxHp * 100) + '%';
+        ui.sp.style.width = (this.sp / this.maxSp * 100) + '%';
+
+        if (this.hp <= 0) die();
+    },
+
+    roll() {
+        if (this.sp >= ROLL_COST && this.state !== 'rolling' && this.state !== 'attacking') {
+            this.sp -= ROLL_COST;
+            this.state = 'rolling';
+            this.iFrames = 20; // Invincibility frames
+            
+            // Dash towards mouse
+            const dashAngle = Math.atan2(mouse.y - this.y, mouse.x - this.x);
+            this.vx = Math.cos(dashAngle) * ROLL_SPEED;
+            this.vy = Math.sin(dashAngle) * ROLL_SPEED;
+            
+            // Particles (Dust)
+            for(let i=0; i<5; i++) spawnParticle(this.x, this.y, '#555', 2, 20);
+        }
+    },
+
+    attack() {
+        if (this.sp >= ATTACK_COST && this.state !== 'rolling' && this.state !== 'attacking') {
+            this.sp -= ATTACK_COST;
+            this.state = 'attacking';
+            this.attackStartFrame = this.frame;
+            
+            // Forward lunge slightly
+            this.vx += Math.cos(this.angle) * 5;
+            this.vy += Math.sin(this.angle) * 5;
+
+            // Check hit on boss
+            const distToBoss = dist(this.x, this.y, boss.x, boss.y);
+            // Angle check (cone of damage)
+            const angleToBoss = Math.atan2(boss.y - this.y, boss.x - this.x);
+            const angleDiff = Math.abs(angleToBoss - this.angle); // Simplified
+
+            if (distToBoss < 100 && angleDiff < 1.5) {
+                setTimeout(() => {
+                    boss.takeDamage(15);
+                    // Blood particles
+                    for(let i=0; i<10; i++) spawnParticle(boss.x + (Math.random()*40-20), boss.y + (Math.random()*40-20), '#8a2be2', 5, 30);
+                    // Screen shake
+                    screenShake = 5;
+                }, 100);
+            }
+        }
+    },
+
+    takeDamage(amount) {
+        if (this.iFrames > 0 || this.state === 'rolling') return; // Dodge mechanic
+        this.hp -= amount;
+        this.iFrames = 30; // Mercy frames
+        screenShake = 10;
+        // Blood
+        for(let i=0; i<10; i++) spawnParticle(this.x, this.y, '#aa0000', 4, 40);
+        
+        // Pushback
+        const angle = Math.atan2(this.y - boss.y, this.x - boss.x);
+        this.vx = Math.cos(angle) * 10;
+        this.vy = Math.sin(angle) * 10;
+    },
+
+    draw() {
+        if (this.iFrames > 0 && this.frame % 4 === 0) return; // Flicker when hit
+        Sprites.drawPlayer(ctx, this.x, this.y, this.angle, this.state, this.frame);
+    }
+};
+
+// --- BOSS CLASS ---
+const boss = {
+    x: canvas.width/2, y: 100,
+    hp: 500, maxHp: 500,
+    angle: 0,
+    state: 'idle', // idle, chase, windup, attack, cooldown
+    timer: 0,
+    frame: 0,
+
+    update() {
+        if (gameState.over) return;
+        if (this.hp <= 0) return;
+        this.frame++;
+        this.timer--;
+
+        const d = dist(this.x, this.y, player.x, player.y);
+        this.angle = Math.atan2(player.y - this.y, player.x - this.x);
+
+        // Simple AI State Machine
+        if (this.state === 'idle') {
+            if (this.timer <= 0) {
+                this.state = 'chase';
+                this.timer = 100; 
+            }
+        }
+        else if (this.state === 'chase') {
+            this.x += Math.cos(this.angle) * 1.5;
+            this.y += Math.sin(this.angle) * 1.5;
+            
+            if (d < 150) {
+                this.state = 'windup';
+                this.timer = 40; // Telegraph time
+            }
+            if (this.timer <= 0) this.state = 'idle';
+        }
+        else if (this.state === 'windup') {
+            // Telegraph color (flash red)
+            if (this.timer <= 0) {
+                this.state = 'attack';
+                this.timer = 10;
+                this.doAttack();
+            }
+        }
+        else if (this.state === 'attack') {
+            if (this.timer <= 0) {
+                this.state = 'cooldown';
+                this.timer = 60;
+            }
+        }
+        else if (this.state === 'cooldown') {
+            if (this.timer <= 0) this.state = 'idle';
+        }
+
+        ui.bossHp.style.width = (this.hp / this.maxHp * 100) + '%';
+        if (this.hp <= 0) winGame();
+    },
+
+    doAttack() {
+        // Lunge
+        const lungeSpeed = 15;
+        this.x += Math.cos(this.angle) * lungeSpeed;
+        this.y += Math.sin(this.angle) * lungeSpeed;
+        
+        // AOE Hitbox
+        if (dist(this.x, this.y, player.x, player.y) < 100) {
+            player.takeDamage(35);
+        }
+        
+        // Effect
+        screenShake = 15;
+        for(let i=0; i<20; i++) spawnParticle(this.x, this.y, '#fff', 8, 20);
+    },
+
+    takeDamage(dmg) {
+        this.hp -= dmg;
+    },
+
+    draw() {
+        if (this.hp <= 0) return;
+        // Telegraph indicator
+        if (this.state === 'windup') {
+             ctx.strokeStyle = `rgba(255, 0, 0, ${Math.random()})`;
+             ctx.lineWidth = 2;
+             ctx.beginPath();
+             ctx.moveTo(this.x, this.y);
+             ctx.lineTo(player.x, player.y);
+             ctx.stroke();
+        }
+        Sprites.drawBoss(ctx, this.x, this.y, this.angle, this.state, this.frame);
+    }
+};
+
+let screenShake = 0;
+
+function die() {
+    gameState.over = true;
+    ui.msg.innerText = "YOU DIED";
+    ui.msg.style.color = "#8a0000";
+    ui.msg.style.textShadow = "0 0 20px red";
+    ui.msg.style.display = "block";
+}
+
+function winGame() {
+    gameState.over = true;
+    ui.msg.innerText = "LEGEND SLAIN";
+    ui.msg.style.color = "#FFD700";
+    ui.msg.style.textShadow = "0 0 20px gold";
+    ui.msg.style.display = "block";
+    ui.bossUi.style.display = 'none';
+}
+
+function resetGame() {
+    gameState.over = false;
+    player.hp = player.maxHp;
+    player.sp = player.maxSp;
+    player.x = canvas.width/2; 
+    player.y = canvas.height - 100;
+    
+    boss.hp = boss.maxHp;
+    boss.x = canvas.width/2;
+    boss.y = 100;
+    boss.state = 'idle';
+    
+    ui.msg.display = 'none';
+    ui.bossUi.style.display = 'block';
+    
+    // Clear particles
+    particles = [];
+    ui.msg.style.display = "none";
+}
+
+// --- MAIN LOOP ---
+function loop() {
+    // Clear & Background
+    ctx.fillStyle = '#110d14'; // Dark purple/black
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Grid floor pattern
+    ctx.strokeStyle = '#1a1520';
+    ctx.lineWidth = 2;
+    const gridSize = 100;
+    const offsetX = -player.x % gridSize;
+    const offsetY = -player.y % gridSize;
+    
+    // Screen Shake effect
+    let shakeX = 0, shakeY = 0;
+    if (screenShake > 0) {
+        shakeX = (Math.random() - 0.5) * screenShake;
+        shakeY = (Math.random() - 0.5) * screenShake;
+        screenShake *= 0.9;
+    }
+    
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    // Floor
+    for(let x=0; x<canvas.width; x+=gridSize) {
+        for(let y=0; y<canvas.height; y+=gridSize) {
+            ctx.strokeRect(x, y, gridSize, gridSize);
+        }
+    }
+
+    // Update
+    player.update();
+    boss.update();
+    updateParticles();
+
+    // Draw
+    boss.draw();
+    player.draw();
+    drawParticles();
+
+    ctx.restore();
+    requestAnimationFrame(loop);
+}
+
+// Start
+ui.bossUi.style.display = 'block';
+loop();
+
+// Resize handler
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+</script>
+</body>
+</html>

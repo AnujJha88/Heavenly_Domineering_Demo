@@ -135,37 +135,38 @@ function getEmptyComponents(oMap) {
 
 // Returns all legal moves for a player in any component
 function legalMoves(side) {
-  const moves = [];
-  
-  // Check all empty cells for possible moves
-  for (const s of cells) {
-    const {x, y} = parseKey(s);
+    const moves = [];
+    const components = getEmptyComponents(occ);
     
-    // Skip occupied cells
-    if (!isEmpty(x, y)) continue;
-    
-    // Check for vertical domino placement (Left player)
-    if (side === 'Left' && isEmpty(x, y + 1)) {
-      moves.push({side, kind: 'V', x, y});
+    // For each component, find moves at the topmost row only
+    for (const comp of components) {
+        let compTopY = Math.min(...comp.map(s => parseKey(s).y));
+        
+        for (const s of comp) {
+            const {x, y} = parseKey(s);
+            // Only consider cells at the top row of this component
+            if (y !== compTopY) continue;
+            
+            // Check for vertical domino placement (Left/Blue player)
+            if (side === 'Left' && isEmpty(x, y) && isEmpty(x, y + 1)) {
+                moves.push({side, kind: 'V', x, y});
+            }
+            // Check for horizontal domino placement (Right/Red player)
+            if (side === 'Right' && isEmpty(x, y) && isEmpty(x + 1, y)) {
+                moves.push({side, kind: 'H', x, y});
+            }
+        }
     }
     
-    // Check for horizontal domino placement (Right player)
-    if (side === 'Right' && isEmpty(x + 1, y)) {
-      moves.push({side, kind: 'H', x, y});
+    // If no moves available, check for 1x1 moves if enabled
+    if (moves.length === 0 && allSmallToggle.checked) {
+        const g = legalAllSmallPlaceLocal(occ);
+        if (g) {
+            moves.push({side, kind: 'S', x: g.x, y: g.y});
+        }
     }
-  }
-  
-  // If no moves available, check for 1x1 moves if enabled
-  if (moves.length === 0 && allSmallToggle.checked) {
-    for (const s of cells) {
-      const {x, y} = parseKey(s);
-      if (isEmpty(x, y)) {
-        moves.push({side, kind: 'S', x, y});
-      }
-    }
-  }
-  
-  return moves;
+    
+    return moves;
 }
 
 // Updated All-Small logic: places at the top of any component
@@ -216,9 +217,16 @@ function drawTopRowGlow() {
     for (const s of comp) {
       const {x, y} = parseKey(s);
       if (y === compTopY) {
-        const {px, py} = toPx(x, y);
-        ctx.fillStyle = 'rgba(255,214,0,0.15)';
-        ctx.fillRect(px, py, CELL, CELL);
+        // Check if this cell is accessible to either player
+        const leftCanMove = isEmpty(x, y) && isEmpty(x, y + 1);
+        const rightCanMove = isEmpty(x, y) && isEmpty(x + 1, y);
+        
+        // Only highlight if at least one player can move here AND it's actually empty
+        if ((leftCanMove || rightCanMove) && isEmpty(x, y)) {
+          const {px, py} = toPx(x, y);
+          ctx.fillStyle = 'rgba(255,214,0,0.15)';
+          ctx.fillRect(px, py, CELL, CELL);
+        }
       }
     }
   }
@@ -265,8 +273,123 @@ function drawGhost(x,y){
 
 function renderBase(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  
+  // Add game info panels in unused space around game board
+  if (cells.size > 0) {
+    const boardWidth = (bounds.maxX - bounds.minX + 1) * CELL;
+    const boardHeight = (bounds.maxY - bounds.minY + 1) * CELL;
+    const boardX = PAD;
+    const boardY = PAD;
+    
+    ctx.fillStyle = 'rgba(32, 32, 32, 0.05)';
+    ctx.strokeStyle = 'rgba(128, 128, 128, 0.2)';
+    ctx.lineWidth = 1;
+    
+    // Top space - Game title and mode
+    if (boardY > 40) {
+      ctx.fillRect(0, 0, canvas.width, boardY);
+      ctx.strokeRect(0, 0, canvas.width, boardY);
+      
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 24px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Heavenly Domineering', canvas.width / 2, boardY / 2);
+      
+      ctx.font = '14px Arial';
+      ctx.fillText(mode === 'gameover' ? 'Game Over' : mode === 'play' ? 'Play Mode' : 'Explore Mode', canvas.width / 2, boardY / 2 + 20);
+    }
+    
+    // Bottom space - Player info
+    if (boardY + boardHeight + 40 < canvas.height) {
+      const bottomY = boardY + boardHeight;
+      const bottomHeight = canvas.height - bottomY;
+      ctx.fillRect(0, bottomY, canvas.width, bottomHeight);
+      ctx.strokeRect(0, bottomY, canvas.width, bottomHeight);
+      
+      ctx.fillStyle = '#333';
+      ctx.font = '16px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      const leftMoves = legalMoves('Left').length;
+      const rightMoves = legalMoves('Right').length;
+      
+      ctx.fillText(`Blue (Left): ${leftMoves} moves | Red (Right): ${rightMoves} moves`, canvas.width / 2, bottomY + bottomHeight / 2);
+    }
+    
+    // Left space - Current player indicator
+    if (boardX > 60) {
+      ctx.fillRect(0, boardY, boardX, boardHeight);
+      ctx.strokeRect(0, boardY, boardX, boardHeight);
+      
+      ctx.save();
+      ctx.translate(boardX / 2, boardY + boardHeight / 2);
+      ctx.rotate(-Math.PI / 2);
+      
+      ctx.fillStyle = current === 'Left' ? '#4A90E2' : '#E24A4A';
+      ctx.font = 'bold 20px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(mode === 'gameover' ? 'Game Over' : `${current}'s Turn`, 0, 0);
+      ctx.restore();
+    }
+    
+    // Right space - Board size info
+    if (boardX + boardWidth + 80 < canvas.width) {
+      const rightX = boardX + boardWidth;
+      const rightWidth = canvas.width - rightX;
+      ctx.fillRect(rightX, boardY, rightWidth, boardHeight);
+      ctx.strokeRect(rightX, boardY, rightWidth, boardHeight);
+      
+      ctx.fillStyle = '#666';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      const boardSize = cells.size;
+      const occupied = Array.from(occ.values()).filter(v => v > 0).length;
+      
+      ctx.fillText(`Board: ${boardSize}`, rightX + rightWidth / 2, boardY + boardHeight / 2 - 15);
+      ctx.fillText(`Occupied: ${occupied}`, rightX + rightWidth / 2, boardY + boardHeight / 2);
+      ctx.fillText(`Empty: ${boardSize - occupied}`, rightX + rightWidth / 2, boardY + boardHeight / 2 + 15);
+    }
+  }
+  
   for(const s of cells){ const {x,y}=parseKey(s); drawTileBackground(x,y); }
   drawSubsetGrid();
+}
+
+function drawGameOverOverlay() {
+  console.log('drawGameOverOverlay called, mode =', mode); // Debug
+  if (mode !== 'gameover') {
+    console.log('Not drawing overlay - mode is not gameover'); // Debug
+    return;
+  }
+  
+  console.log('Drawing game over overlay'); // Debug
+  ctx.save();
+  
+  // Use actual canvas dimensions
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw game over text
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 48px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 30);
+  
+  ctx.font = '24px Arial';
+  ctx.fillText(`${current} cannot move`, canvas.width / 2, canvas.height / 2 + 20);
+  
+  // Add a border around the game over area
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(canvas.width / 2 - 150, canvas.height / 2 - 60, 300, 100);
+  
+  ctx.restore();
 }
 
 function render(){
@@ -274,16 +397,59 @@ function render(){
   renderBase();
   drawTopRowGlow();
   drawAllPieces(occ);
-  if(mode === 'play' && !builderToggle.checked && hoverCell) drawGhost(hoverCell.x, hoverCell.y);
+  if(mode === 'play' && !builderToggle.checked && hoverCell && mode !== 'gameover') drawGhost(hoverCell.x, hoverCell.y);
   leftBtn.classList.toggle('active', current === 'Left' && mode === 'play');
   rightBtn.classList.toggle('active', current === 'Right' && mode === 'play');
   exploreBtn.disabled = mode !== 'explore';
   repeatsLabel.style.display = mode === 'explore' ? 'flex' : 'none';
+  
+  // Draw game over overlay last so it appears on top of everything
+  if (mode === 'gameover') {
+    console.log('Drawing game over overlay - mode is gameover'); // Debug
+    ctx.save();
+    
+    // Use actual canvas dimensions
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Changed to red for visibility
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw game over text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 48px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 30);
+    
+    ctx.font = '24px Arial';
+    ctx.fillText(`${current} cannot move`, canvas.width / 2, canvas.height / 2 + 20);
+    
+    // Add a border around the game over area
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(canvas.width / 2 - 150, canvas.height / 2 - 60, 300, 100);
+    
+    ctx.restore();
+  }
 }
 
 // Interaction
 canvas.addEventListener('mousemove', e=>{
-  if(mode === 'play'){ const p = eventToCell(e); hoverCell = p; render(); }
+  if(mode === 'play'){ 
+    const p = eventToCell(e); 
+    hoverCell = p; 
+    // Check for game over on hover
+    checkGameOver();
+    render(); 
+  }
+});
+
+// Add keyboard shortcut to test overlay (press 'G' key)
+document.addEventListener('keydown', e=>{
+  if(e.key === 'g' || e.key === 'G'){
+    mode = mode === 'gameover' ? 'play' : 'gameover';
+    console.log('Forced mode to:', mode);
+    updateHUD();
+    render();
+  }
 });
 canvas.addEventListener('mouseleave', ()=>{ if(mode === 'play') { hoverCell=null; render(); } });
 canvas.addEventListener('click', e=>{
@@ -327,9 +493,18 @@ function redo(){ if(!redoStack.length) return;
 
 function updateHUD(){
   modeDisplay.textContent = mode === 'play' ? 'Play (Alternating)' : 'Explore (Repeated Sims)';
-  turnEl.textContent=current;
-  const topY=getTopY(); topYEl.textContent=topY;
-  movesAvailEl.textContent = legalMoves(current).length || (allSmallToggle.checked && legalAllSmallPlaceLocal(occ) ? 1 : 0);
+  if (mode === 'gameover') {
+    modeDisplay.textContent = 'Game Over';
+    turnEl.textContent = `${current} cannot move`;
+    const topY=getTopY(); 
+    topYEl.textContent = topY;
+    movesAvailEl.textContent = '0';
+  } else {
+    turnEl.textContent=current;
+    const topY=getTopY(); 
+    topYEl.textContent=topY;
+    movesAvailEl.textContent = legalMoves(current).length || (allSmallToggle.checked && legalAllSmallPlaceLocal(occ) ? 1 : 0);
+  }
 }
 
 function animatePlace(cellsPlaced, color, edge, done){
@@ -348,47 +523,43 @@ function animatePlace(cellsPlaced, color, edge, done){
   anim=requestAnimationFrame(frame);
 }
 
+function checkGameOver() {
+  const currentMoves = legalMoves(current);
+  console.log('checkGameOver: current =', current, 'moves =', currentMoves.length); // Debug
+  if (currentMoves.length === 0) {
+    log(`Game over! ${current} has no legal moves.`);
+    mode = 'gameover';
+    console.log('checkGameOver: set mode to gameover'); // Debug
+    updateHUD();
+    render();
+    return true;
+  }
+  return false;
+}
+
 function placeMove(x, y) {
   if (mode !== 'play') return;
   
+  // Check if current player has any legal moves before allowing move
+  if (checkGameOver()) return;
+  
   const avail = legalMoves(current);
   
-  // Check if the current player has any legal moves
-  if (avail.length === 0) {
-    log(`Game over! ${current} has no legal moves.`);
-    return;
-  }
-  
-  // Check if the clicked position is a valid move
-  let isValidMove = false;
-  let moveType = '';
-  
-  // Check for vertical domino placement (Left player)
-  if (current === 'Left' && isEmpty(x, y) && isEmpty(x, y + 1)) {
-    isValidMove = true;
-    moveType = 'V';
-  } 
-  // Check for horizontal domino placement (Right player)
-  else if (current === 'Right' && isEmpty(x, y) && isEmpty(x + 1, y)) {
-    isValidMove = true;
-    moveType = 'H';
-  }
-  // Check for 1x1 placement if enabled and no domino moves available
-  else if (allSmallToggle.checked && isEmpty(x, y)) {
-    // Only allow 1x1 if no domino moves are available
-    const dominoMoves = avail.filter(m => m.kind !== 'S');
-    if (dominoMoves.length === 0) {
-      isValidMove = true;
-      moveType = 'S';
+  // Check if the clicked position is a valid move by checking against legal moves
+  let validMove = null;
+  for (const move of avail) {
+    if (move.x === x && move.y === y) {
+      validMove = move;
+      break;
     }
   }
   
-  if (!isValidMove) return;
+  if (!validMove) return; // Invalid move - not in legal moves list
   
   pushUndo();
   
   // Handle the move based on type
-  if (moveType === 'V') {
+  if (validMove.kind === 'V') {
     occ.set(key(x, y), 2); 
     occ.set(key(x, y + 1), 2);
     log(`${current} places vertical at (${x},${y})`);
@@ -396,7 +567,7 @@ function placeMove(x, y) {
                 getCss('--blue'), 
                 getCss('--blue-edge'));
   } 
-  else if (moveType === 'H') {
+  else if (validMove.kind === 'H') {
     occ.set(key(x, y), 3); 
     occ.set(key(x + 1, y), 3);
     log(`${current} places horizontal at (${x},${y})`);
@@ -404,7 +575,7 @@ function placeMove(x, y) {
                 getCss('--red'), 
                 getCss('--red-edge'));
   }
-  else if (moveType === 'S') {
+  else if (validMove.kind === 'S') {
     occ.set(key(x, y), 4);
     log(`${current} places 1x1 at (${x},${y})`);
     animatePlace([{x, y}], 
@@ -418,8 +589,41 @@ function placeMove(x, y) {
   // Check if the next player has any legal moves
   const nextMoves = legalMoves(current);
   if (nextMoves.length === 0) {
-    log(`Game over! ${current} has no legal moves.`);
-    // Optionally, you could show a game over message here
+    log(`${current} has no legal moves.`);
+    
+    // Check if we should remove the top row
+    const topY = getTopY();
+    if (topY !== -1) {
+      // Check if both players have no moves on this top row
+      const leftMoves = legalMoves('Left');
+      const rightMoves = legalMoves('Right');
+      
+      // Filter moves to only those on the top row
+      const leftTopMoves = leftMoves.filter(m => m.y === topY);
+      const rightTopMoves = rightMoves.filter(m => m.y === topY);
+      
+      if (leftTopMoves.length === 0 && rightTopMoves.length === 0) {
+        // Remove the top row by marking all cells in that row as occupied
+        let removedCount = 0;
+        for (const s of cells) {
+          const {x, y} = parseKey(s);
+          if (y === topY && isEmpty(x, y)) {
+            occ.set(key(x, y), 1); // Mark as removed/blocked
+            removedCount++;
+          }
+        }
+        if (removedCount > 0) {
+          log(`Removed top row y=${topY} (${removedCount} cells)`);
+        }
+      }
+    }
+    
+    // Final check if game is over
+    const finalMoves = legalMoves(current);
+    if (finalMoves.length === 0) {
+      log(`Game over! ${current} has no legal moves.`);
+      mode = 'gameover'; // Prevent further moves
+    }
   }
   
   updateHUD();
@@ -550,6 +754,8 @@ function isConnected(){
 // Generator
 function genPoly(n=16, numComponents=1){
   pushUndo(); cells.clear(); occ.clear();
+  mode = 'play'; modeSelect.value = 'play'; // Reset mode when generating new board
+  current = 'Left'; // Reset current player
   
   if (numComponents === 1) {
     // Original single component generation
